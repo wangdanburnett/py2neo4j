@@ -221,5 +221,5 @@ class Neo4jConnection(neo4j.connection.Connection):
 			yield relation
 
 	#to match target relation
-        def match_one(self,start_node=None,rel_type=None,end_node=None,bidirectional=True,limit=None,**attrs):
-                return self.match(start_node=start_node,rel_type=rel_type,end_node=end_node,bidirectional=bidirectional,limit=limit,**attrs).next()
+        def match_one(self,start_node=None,rel_type=None,end_node=None,bidirectional=True,**attrs):
+                return self.match(start_node=start_node,rel_type=rel_type,end_node=end_node,bidirectional=bidirectional,**attrs).next()
