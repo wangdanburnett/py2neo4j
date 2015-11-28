@@ -121,7 +121,7 @@ class Neo4jConnection(neo4j.connection.Connection):
 
 	def merge_one_node(self,node):
 		if not isinstance(node,Node):
-			raise Exception('Invalid Parameter! Node Type Enssential!')
+			raise Exception('Invalid Parameter! Node Type Essential!')
 		labels=':'.join(node.labels)
 		attrs={'node':node.attrs}
 		statement="MERGE (n:%s {%s}) RETURN id(n),labels(n),n" % (labels,','.join(map(lambda x:x[0]+':{'+attrs.keys()[0]+'}.'+x[0],node.attrs.items())))
@@ -135,7 +135,7 @@ class Neo4jConnection(neo4j.connection.Connection):
 
 	def _create_one_relation(self,relation,unique=False):
 		if not isinstance(relation,Relation):
-			raise Exception('Invalid Parameter! Node Type Enssential!')
+			raise Exception('Invalid Parameter! Node Type Essential!')
 		start_node,end_node,relation_type,is_bidirectional=relation.start_node,relation.end_node,relation.relation_type,relation.bidirectional
 		start_node_labels,end_node_labels=map(lambda x:':'.join(x.labels),[start_node,end_node])
 		start_node_index,end_node_index=start_node.index,end_node.index
