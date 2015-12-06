@@ -37,7 +37,7 @@ class Relation:
 		if attrs.has_key('bidirectional'):
 			self.bidirectional=attrs['bidirectional']
 		else:
-			self.bidirectional=False
+			self.bidirectional=True
 	def set_index(self,index):
 		self.index=index
 	@property
@@ -67,14 +67,15 @@ class Neo4jConnection(neo4j.connection.Connection):
 	@property
 	def order(self):
 		statement='MATCH (n) RETURN count(n)'
-		return self.cursor.execute(statement).next()[0]
+		result=self.cursor.execute(statement).next()[0]
+		return result
 
 	#return the number of relations in graph db
 	@property
 	def size(self):
-		statement='MATCH ()-[r]-() RETURN count(r)'
-		return self.cursor.execute(statement).next()[0]
-		
+		statement='MATCH ()-[r]->() RETURN count(r)'
+		result=self.cursor.execute(statement).next()[0]
+		return result
 	#to delete target
 	def delete_one_node(self,node):
 		statement="MATCH (n) WHERE id(n)=%s DELETE n " % node.index
@@ -86,7 +87,7 @@ class Neo4jConnection(neo4j.connection.Connection):
 			yield self.delete_one_node(node)
 
 	def delete_one_relation(self,relation):
-		statement="MATCH ()-[r]-() WHERE id(r)=%s DELETE r" % relation.index
+		statement="MATCH ()-[r]->() WHERE id(r)=%s DELETE r" % relation.index
 		self.cursor.execute(statement)
 		return relation
 
@@ -97,7 +98,7 @@ class Neo4jConnection(neo4j.connection.Connection):
 	def delete_all(self):
 		print 'Warning: All Nodes And Relations Will Be Permanently Removed!'
 		print 'Deleting All Edges...'
-		statement='MATCH ()-[r]-() DELETE r'
+		statement='MATCH ()-[r]->() DELETE r'
 		self.cursor.execute(statement)
 		print 'Deleting All Nodes...'
 		statement='MATCH (n) DELETE n'
@@ -107,7 +108,7 @@ class Neo4jConnection(neo4j.connection.Connection):
 
 	def create_one_node(self,node):
 		if not isinstance(node,Node):
-			raise Exception('Invalid Parameter! Node Type Enssential!')
+			raise Exception('Invalid Parameter! Node Type Essential!')
 		labels=':'.join(node.labels)
 		attrs={'node':node.attrs}
 		statement="CREATE (n:%s {node}) RETURN id(n),labels(n),n" % labels
@@ -145,10 +146,7 @@ class Neo4jConnection(neo4j.connection.Connection):
 			statement+=' CREATE UNIQUE'
 		else:
 			statement+=' CREATE'
-		if is_bidirectional:
-			statement+=' (start_node)-[r:%s {relation}]-(end_node)' % relation_type
-		else:
-			statement+=' (start_node)-[r:%s {relation}]->(end_node)' % relation_type
+		statement+=' (start_node)-[r:%s {relation}]->(end_node)' % relation_type
 		statement+=' RETURN id(r),type(r),r'
 		relation_index,relation_type,relation_attrs=self.cursor.execute(statement, **relation_attrs).next()
 		relation.set_index(relation_index)
@@ -174,10 +172,10 @@ class Neo4jConnection(neo4j.connection.Connection):
 			raise Exception('Empty Labels Invalid!')
 		labels=':'.join(labels)
 		if attrs:
-			attrs={'node':attrs}
-			statement='MATCH (node:%s {node})' % labels
+			node_attrs={'node':attrs}
+			statement='MATCH (node:%s {%s})' % (labels,','.join(map(lambda x:x[0]+':{'+node_attrs.keys()[0]+'}.'+x[0],attrs.items())))
 			statement+=' RETURN id(node),labels(node),node'
-			result=self.cursor.execute(statement,**attrs)
+			result=self.cursor.execute(statement,**node_attrs)
 		else:
 			statement='MATCH (node:%s)' % labels
 			statement+=' RETURN id(node),labels(node),node'
@@ -189,37 +187,39 @@ class Neo4jConnection(neo4j.connection.Connection):
 
 	#to find target node
 	def find_one(self,*labels,**attrs):
-		return self.find(limit=1,*labels,**attrs).next()
+		return self.find(*labels,**attrs).next()
 
 	#to match target relations
-	def match(self,start_node=None,rel_type=None,end_node=None,bidirectional=True,**attrs):
-		statement=''
+	def match(self,start_node=None,rel_type=None,end_node=None,**attrs):
+		statement='MATCH (start_node),(end_node)'
 		relation_attrs={'relation':attrs}
 		if not start_node and not end_node:
-			statement+='MATCH (start_node)'
+			pass
 		elif not end_node:
-			statement+='MATCH (start_node) WHERE id(start_node)=%s' % start_node.index
+			statement+=' WHERE id(start_node)=%s' % start_node.index
 		elif not start_node:
-			statement+='MATCH (end_node) WHERE id(end_node)=%s' % end_node.index
+			statement+=' WHERE id(end_node)=%s' % end_node.index
 		else:
-			statement+='MATCH (start_node) WHERE id(start_node)=%s MATCH (end_node) WHERE id(end_node)=%s' % (start_node.index,end_node.index)
+			statement+='WHERE id(start_node)=%s AND id(end_node)=%s' % (start_node.index,end_node.index)
 		rel_clause=''
 		if rel_type:
 			rel_clause+=':'+rel_type
 		rel_clause+=' '
 		if attrs:
 			rel_clause+='{%s}' % ','.join(map(lambda x:x[0]+':{'+relation_attrs.keys()[0]+'}.'+x[0],attrs.items()))
-		if bidirectional:
-			statement+=' MATCH (start_node)-[relation'+rel_clause+']-(end_node)'
-		else:
-			statement+=' MATCH (start_node)-[relation'+rel_clause+']->(end_node)'
-		statement+=' RETURN id(relation),type(relation),start_node,end_node,relation'
+		statement+=' MATCH (start_node)-[relation'+rel_clause+']-(end_node)'
+		statement+=' RETURN id(relation),type(relation),id(start_node),labels(start_node),start_node,id(end_node),labels(end_node),end_node,relation'
 		result=self.cursor.execute(statement,**relation_attrs)
-		for relation_index,relation_type,start_node,end_node,relation_attrs in result:
+		for relation_index,relation_type,start_node_index,start_node_labels,start_node_attrs,end_node_index,end_node_labels,end_node_attrs,relation_attrs in result:
+			start_node=Node(start_node_labels,**start_node_attrs)
+			start_node.set_index(start_node_index)
+			end_node=Node(end_node_labels,**end_node_attrs)
+			end_node.set_index(end_node_index)
 			relation=Relation(*(start_node,relation_type,end_node),**relation_attrs)
 			relation.set_index(relation_index)
 			yield relation
 
 	#to match target relation
-        def match_one(self,start_node=None,rel_type=None,end_node=None,bidirectional=True,**attrs):
-                return self.match(start_node=start_node,rel_type=rel_type,end_node=end_node,bidirectional=bidirectional,**attrs).next()
+        def match_one(self,start_node=None,rel_type=None,end_node=None,**attrs):
+                return self.match(start_node=start_node,rel_type=rel_type,end_node=end_node,**attrs).next()
+
